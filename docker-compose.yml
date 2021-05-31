@@ -1,0 +1,37 @@
+version: "3.8"
+   
+services:
+    app:
+        build: .
+        env_file: init/.env.dev
+        container_name: django
+        command: sh -c "init/wait_for_postgres.sh && python manage.py runserver ${DJANGO_IP}:${DJANGO_PORT}"
+        volumes:
+            - .:/app
+        environment: 
+            - DEBUG=1
+            - DB_HOST=pg
+            - DB_NAME=${POSTGRES_DB}
+            - DB_USER=${POSTGRES_USER}
+            - DB_PASS=${POSTGRES_PW}
+        ports:
+            - "${DJANGO_PORT}:${DJANGO_PORT}"
+        depends_on:
+            - pg
+    pg:
+        image: postgres
+        env_file: init/.env.dev
+        container_name: pgdb
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        environment:
+            #log in credentials and language setting for japanese text
+            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_PASSWORD=${POSTGRES_PW}
+            - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
+            - POSTGRES_DB=${POSTGRES_DB}
+        ports:
+            - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+volumes:
+    pgdata:
+        driver: local
