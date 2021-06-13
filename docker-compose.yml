@@ -1,13 +1,16 @@
 version: "3.8"
-   
+
 services:
-    app:
-        build: .
+    #the gunicorn->django part
+    backend:
+        build:
+            context: ./django
         env_file: init/.env.dev
-        container_name: django
-        command: sh -c "init/wait_for_postgres.sh && python manage.py runserver ${DJANGO_IP}:${DJANGO_PORT}"
+        # container_name: django
+        command: gunicorn core.wsgi --bind ${DJANGO_IP}:${DJANGO_PORT}
+        # command: sh -c "init/wait_for_postgres.sh && python manage.py runserver ${DJANGO_IP}:${DJANGO_PORT}"
         volumes:
-            - .:/app
+            - ./django:/django
         environment: 
             - DEBUG=1
             - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
@@ -22,14 +25,18 @@ services:
         depends_on:
             - pg
             - redis
+    #the django<->celery part
     celery:
-        build: .
+        build:
+            context: ./django
+        container_name: celery
         command: celery -A core worker -l INFO
         volumes:
-            - .:/app
+            - ./django:/django
         depends_on:
-            - app
+            - backend
             - redis
+    #the django->postgres part
     pg:
         image: postgres
         env_file: init/.env.dev
@@ -44,8 +51,31 @@ services:
             - POSTGRES_DB=${POSTGRES_DB}
         ports:
             - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    #the django<->redis part
     redis:
         image: "redis:alpine"
+    #the react part
+    frontend:
+        build:
+            context: ./react/blogapi
+        volumes:
+            - react_build:/react/build
+    #the nginx part - edit the nginx-setup.conf file manually
+    #or use docker entry point script and envsubst
+    #https://serverfault.com/questions/577370/how-can-i-use-environment-variables-in-nginx-conf
+    nginx:
+        image: nginx:latest
+        env_file: init/.env.dev
+        ports:
+            - "80:${NGINX_PORT}"
+        
+        volumes:
+            - ./nginx/nginx-setup.conf:/etc/nginx/conf.d/default.conf:ro
+            - react_build:/var/www/react
+        depends_on:
+            - backend
+            - frontend
 volumes:
+    react_build:
     pgdata:
         driver: local
